@@ -1,4 +1,15 @@
-# http://localhost:8000/log4om/log?CALL=KQ4DAP&RST_SENT=599&RST_RCVD=599&FREQ=14.045&FREQ_RX=14.045&MODE=CW&COMMENT=[POTA%20K-3377%20US-NE%20EN21ba%20Schilling%20Wildlife%20Management%20Area]%20&QSO_DATE=20230801&TIME_ON=171143&TX_PWR=&RX_PWR=&APP_L4ONG_QSO_AWARD_REFERENCES=[{%22AC%22:%22POTA%22,%22R%22:%22K-3377%22,%22G%22:%22US-NE%22,%22SUB%22:[],%22GRA%22:[]}]&__port=
+'''
+    ham-apps-proxy PYTHON: a replacement for the ham-apps-proxy by David 
+    Westbrook (K2DW).  
+
+    Assume that everything here will blow up in some way. This is provided for 
+    entertainment purposes only (you can laugh at my code). My setup is a 
+    Windows laptop running Log4om 2 and a Xiegu G90. It's tested and works to
+    log from the UI and to QSY my rig. I've also tested N3FJP's aclog and it
+    seems to work but requires a front end change
+
+    -Cainan KQ4DAP
+'''
 
 import argparse
 import uvicorn
@@ -29,14 +40,14 @@ print(f"PM_CW_L: {omnirig.Rig1.IsParamWriteable(0x01000000)}")
 print(f"PM_SSB_U: {omnirig.Rig1.IsParamWriteable(0x02000000)}")
 print(f"PM_SSB_L: {omnirig.Rig1.IsParamWriteable(0x04000000)}")
 
-VER = "0.0.0a"
+VER = "0.0.1"
 LOG4OM_HOST = "localhost"
 LOG4OM_PORT = 2239
 ACLOG_HOST = "localhost"
 ACLOG_PORT = 1100
 
 config = {
-    'cw_rit': 10 # offset in HZ, if nonzero is added to freq 
+    'cw_rit': 0 # offset in HZ, if nonzero is added to freq 
 }
 
 @app.get("/", response_class=HTMLResponse)
@@ -139,10 +150,9 @@ async def omnirig_qsy(request: Request):
         print(rig.RigType)
         rig.Mode = modes[mode]
 
-        # this doesn't work on G-90
         if (mode.startswith("CW")):
-            rig.Rit = 10
             if (config['cw_rit'] != 0):
+                rig.Rit = config['cw_rit'] # this doesn't work on G-90
                 freq += config['cw_rit']
 
         rig.Freq = freq
