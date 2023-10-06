@@ -11,6 +11,8 @@
     -Cainan KQ4DAP
 '''
 
+import os.path
+import datetime
 import argparse
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
@@ -40,11 +42,12 @@ print(f"PM_CW_L: {omnirig.Rig1.IsParamWriteable(0x01000000)}")
 print(f"PM_SSB_U: {omnirig.Rig1.IsParamWriteable(0x02000000)}")
 print(f"PM_SSB_L: {omnirig.Rig1.IsParamWriteable(0x04000000)}")
 
-VER = "0.0.1"
+VER = "0.0.2"
 LOG4OM_HOST = "localhost"
 LOG4OM_PORT = 2239
 ACLOG_HOST = "localhost"
 ACLOG_PORT = 1100
+BACKUP_LOG_FN = "proxy_log.adi"
 
 config = {
     'cw_rit': 0 # offset in HZ, if nonzero is added to freq 
@@ -109,6 +112,8 @@ async def log4om_log(request: Request):
 
     adif_msg = build_adif(params)
 
+    log_qso(adif_msg)
+
     try:
         send_msg(endpoint["host"], endpoint["port"], socket.SOCK_DGRAM, adif_msg)
     except Exception as ex:
@@ -168,7 +173,8 @@ async def aclog_log(request: Request):
     params = request.query_params
 
     endpoint = get_endpoint(params, ACLOG_PORT, ACLOG_HOST)
-    adif_msg = f"<CMD><ADDADIFRECORD><VALUE>{build_adif(params)}</VALUE></CMD>"
+    qso = build_adif(params)
+    adif_msg = f"<CMD><ADDADIFRECORD><VALUE>{qso}</VALUE></CMD>"
 
     try:
         send_msg(endpoint["host"], endpoint["port"], socket.SOCK_STREAM, adif_msg)
@@ -259,6 +265,9 @@ def send_msg(host: str, port: int, type: int, msg: str):
         print("send_msg exception:", err)
         raise
 
+def log_qso(adif: str):
+    with open(BACKUP_LOG_FN, "a") as file:
+        file.write(adif + "\n")
 
 # when we run out of a bundled exe this is what starts off the application
 if __name__ == '__main__':
@@ -272,5 +281,13 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     config['cw_rit'] = args.rit
+
+    if not os.path.exists(BACKUP_LOG_FN):
+        with open(BACKUP_LOG_FN, "w") as f:
+            f.write("HAM-APPS-PROXY PY backup log\n")
+            f.write(f"Created {datetime.datetime.now()}\n")
+            f.write(adif("programid", "ham-apps-proxy_py") + "\n")
+            f.write(adif("programversion", VER) + "\n")
+            f.write("<EOH>\n")
 
     uvicorn.run(app, host="0.0.0.0", port=8073)
