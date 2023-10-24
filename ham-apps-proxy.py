@@ -42,7 +42,7 @@ print(f"PM_CW_L: {omnirig.Rig1.IsParamWriteable(0x01000000)}")
 print(f"PM_SSB_U: {omnirig.Rig1.IsParamWriteable(0x02000000)}")
 print(f"PM_SSB_L: {omnirig.Rig1.IsParamWriteable(0x04000000)}")
 
-VER = "0.0.2"
+VER = "0.0.3"
 LOG4OM_HOST = "localhost"
 LOG4OM_PORT = 2239
 ACLOG_HOST = "localhost"
@@ -266,7 +266,7 @@ def send_msg(host: str, port: int, type: int, msg: str):
         raise
 
 def log_qso(adif: str):
-    with open(BACKUP_LOG_FN, "a") as file:
+    with open(BACKUP_LOG_FN, "a", encoding='UTF-8') as file:
         file.write(adif + "\n")
 
 # when we run out of a bundled exe this is what starts off the application
@@ -283,7 +283,7 @@ if __name__ == '__main__':
     config['cw_rit'] = args.rit
 
     if not os.path.exists(BACKUP_LOG_FN):
-        with open(BACKUP_LOG_FN, "w") as f:
+        with open(BACKUP_LOG_FN, "w", encoding='UTF-8') as f:
             f.write("HAM-APPS-PROXY PY backup log\n")
             f.write(f"Created {datetime.datetime.now()}\n")
             f.write(adif("programid", "ham-apps-proxy_py") + "\n")
