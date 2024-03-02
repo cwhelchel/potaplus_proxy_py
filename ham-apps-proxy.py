@@ -28,7 +28,11 @@ app.add_middleware(
 )
 
 # this may take some time so we do it first
-omnirig = win32com.client.Dispatch("{0839E8C6-ED30-4950-8087-966F970F0CAE}")
+# omnirig = win32com.client.Dispatch("{0839E8C6-ED30-4950-8087-966F970F0CAE}")
+
+# try this: the app (via omni-rig) holds the com port open
+omnirig = win32com.client.gencache.EnsureDispatch("OmniRig.OmniRigX")
+
 print(omnirig)
 print(f"PM_FREQ: {omnirig.Rig1.IsParamWriteable(0x00000002)}")
 print(f"PM_FREQA: {omnirig.Rig1.IsParamWriteable(0x00000004)}")
@@ -42,7 +46,7 @@ print(f"PM_CW_L: {omnirig.Rig1.IsParamWriteable(0x01000000)}")
 print(f"PM_SSB_U: {omnirig.Rig1.IsParamWriteable(0x02000000)}")
 print(f"PM_SSB_L: {omnirig.Rig1.IsParamWriteable(0x04000000)}")
 
-VER = "0.0.3"
+VER = "0.0.5"
 LOG4OM_HOST = "localhost"
 LOG4OM_PORT = 2239
 ACLOG_HOST = "localhost"
@@ -50,8 +54,10 @@ ACLOG_PORT = 1100
 BACKUP_LOG_FN = "proxy_log.adi"
 
 config = {
-    'cw_rit': 0 # offset in HZ, if nonzero is added to freq 
+    'cw_rit': 0,  # offset in HZ, if nonzero is added to freq
+    'g90': False
 }
+
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -157,10 +163,13 @@ async def omnirig_qsy(request: Request):
 
         if (mode.startswith("CW")):
             if (config['cw_rit'] != 0):
-                rig.Rit = config['cw_rit'] # this doesn't work on G-90
+                rig.Rit = config['cw_rit']  # this doesn't work on G-90
                 freq += config['cw_rit']
 
-        rig.Freq = freq
+        if config["g90"]:
+            rig.Freq = freq
+        else:
+            rig.SetSimplexMode(freq)
     except AttributeError as ae:
         print(f"Error Rig name is most likely invalid: {ae}")
         return {"status": "Error: Rig name is most likely invalid:"}
@@ -208,6 +217,11 @@ async def aclog_changemode(request: Request):
 
     return {"status": "true"}
 
+
+@app.on_event('shutdown')
+def shutdown_event():
+    print('potaplus_proxy shutdown handler')
+    omnirig = None
 
 def ping(host: str, port: int, type: int):
     try:
@@ -275,12 +289,14 @@ if __name__ == '__main__':
         prog='ham-apps-proxy PYTHON',
         description='Provides endpoints for POTA PLUS website extension for https://pota.app',
         epilog='')
-    
+
     parser.add_argument('-r', '--rit', default=0, type=int, help='If non-zero, apply an offset in HZ when QSYing to a CW spot.')
+    parser.add_argument('-g', '--g90', action='store_true', help='If given, QSY differently for a Xiegu G90.')
 
     args = parser.parse_args()
 
     config['cw_rit'] = args.rit
+    config['g90_qsy'] = args.g90
 
     if not os.path.exists(BACKUP_LOG_FN):
         with open(BACKUP_LOG_FN, "w", encoding='UTF-8') as f:
