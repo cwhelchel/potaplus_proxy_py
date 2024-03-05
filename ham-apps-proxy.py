@@ -33,6 +33,54 @@ app.add_middleware(
 # try this: the app (via omni-rig) holds the com port open
 omnirig = win32com.client.gencache.EnsureDispatch("OmniRig.OmniRigX")
 
+'''
+methods of IRigX as registered on windows:
+
+[Guid("501a2858-3331-467a-837a-989fdedacc7d")]
+interface IOmniRigX
+{
+   /* Properties */
+   int InterfaceVersion { get; }
+   int SoftwareVersion { get; }
+   RigX Rig1 { get; }
+   RigX Rig2 { get; }
+   bool DialogVisible { get; set; }
+}
+
+[Guid("d30a7e51-5862-45b7-bffa-6415917da0cf")]
+interface IRigX
+{
+   /* Methods */
+   bool IsParamReadable(RigParamX Param);
+   bool IsParamWriteable(RigParamX Param);
+   void ClearRit();
+   void SetSimplexMode(int Freq);
+   void SetSplitMode(int RxFreq, int TxFreq);
+   int FrequencyOfTone(int Tone);
+   void SendCustomCommand(object Command, int ReplyLength, object ReplyEnd);
+   int GetRxFrequency();
+   int GetTxFrequency();
+   /* Properties */
+   string RigType { get; }
+   int ReadableParams { get; }
+   int WriteableParams { get; }
+   RigStatusX Status { get; }
+   string StatusStr { get; }
+   int Freq { get; set; }
+   int FreqA { get; set; }
+   int FreqB { get; set; }
+   int RitOffset { get; set; }
+   int Pitch { get; set; }
+   RigParamX Vfo { get; set; }
+   RigParamX Split { get; set; }
+   RigParamX Rit { get; set; }
+   RigParamX Xit { get; set; }
+   RigParamX Tx { get; set; }
+   RigParamX Mode { get; set; }
+   PortBits PortBits { get; }
+}
+'''
+
 print(omnirig)
 print(f"PM_FREQ: {omnirig.Rig1.IsParamWriteable(0x00000002)}")
 print(f"PM_FREQA: {omnirig.Rig1.IsParamWriteable(0x00000004)}")
@@ -46,7 +94,12 @@ print(f"PM_CW_L: {omnirig.Rig1.IsParamWriteable(0x01000000)}")
 print(f"PM_SSB_U: {omnirig.Rig1.IsParamWriteable(0x02000000)}")
 print(f"PM_SSB_L: {omnirig.Rig1.IsParamWriteable(0x04000000)}")
 
-VER = "0.0.5"
+print(f"PM_RITON: {omnirig.Rig1.IsParamWriteable(0x0002_0000)}")
+print(f"PM_RITOFF: {omnirig.Rig1.IsParamWriteable(0x0004_0000)}")
+print(f"PM_XITON: {omnirig.Rig1.IsParamWriteable(0x0008_0000)}")
+print(f"PM_XITOFF: {omnirig.Rig1.IsParamWriteable(0x0010_0000)}")
+
+VER = "0.0.6"
 LOG4OM_HOST = "localhost"
 LOG4OM_PORT = 2239
 ACLOG_HOST = "localhost"
@@ -55,6 +108,7 @@ BACKUP_LOG_FN = "proxy_log.adi"
 
 config = {
     'cw_rit': 0,  # offset in HZ, if nonzero is added to freq
+    'cw_xit': False,  # true to turn on XIT for CW mode and OFF for others
     'g90': False
 }
 
@@ -150,6 +204,12 @@ async def omnirig_qsy(request: Request):
         "CW-L": 0x01000000
     }
 
+    # from OmniRig.ridl
+    RigParamX = {
+        'PM_XITON': 0x0008_0000, 
+        'PM_XITOFF': 0x0010_0000, 
+    }
+
     freq = int(request.query_params["freq"])
     mode = request.query_params["mode"]
     rig_name = request.query_params.get("__port", "Rig1")
@@ -165,6 +225,10 @@ async def omnirig_qsy(request: Request):
             if (config['cw_rit'] != 0):
                 rig.Rit = config['cw_rit']  # this doesn't work on G-90
                 freq += config['cw_rit']
+            elif (config["cw_xit"]):
+                rig.Xit = RigParamX["PM_XITON"]
+        else:
+            rig.Xit = RigParamX["PM_XITOFF"]
 
         if config["g90"]:
             rig.Freq = freq
@@ -191,6 +255,24 @@ async def aclog_log(request: Request):
         raise HTTPException(status_code=500, detail=f"error in send_msg: {print(ex)}")        
 
     return {"status": "true"}
+
+'''
+// dan
+// number: is for sorting in ham-apps-proxy - aclog needs these to be in order
+url = baseURL + "/aclog/?"
+    + "01:<CMD><ACTION><VALUE>CLEAR</VALUE></CMD>"
+    + "&02:<CMD><UPDATE><CONTROL>TXTENTRYCALL</CONTROL><VALUE>__CALL__</VALUE></CMD>"
+    + "&03:<CMD><ACTION><VALUE>CALLTAB</VALUE></CMD>"
+    + "&04:<CMD><UPDATE><CONTROL>TXTENTRYFREQUENCY</CONTROL><VALUE>" + (freq / 1000.0) + "</VALUE></CMD>"
+    + "&05:<CMD><UPDATE><CONTROL>TXTENTRYMODE</CONTROL><VALUE>" + mode + "</VALUE></CMD>"
+    + "&06:<CMD><UPDATE><CONTROL>TXTENTRYDATE</CONTROL><VALUE>" + new Date().toISOString().slice(0 ,10).replaceAll("-","/") + "</VALUE></CMD>"
+    + "&07:<CMD><UPDATE><CONTROL>TXTENTRYTIMEON</CONTROL><VALUE>" + new Date().toISOString().slice(11,16) + "</VALUE></CMD>"
+    + "&08:<CMD><UPDATE><CONTROL>TXTENTRYTIMEOFF</CONTROL><VALUE>" + new Date().toISOString().slice(11,16) + "</VALUE></CMD>"
+    + "&09:<CMD><UPDATE><CONTROL>TXTENTRYRSTR</CONTROL><VALUE>__RST_RCVD__</VALUE></CMD>"
+    + "&10:<CMD><UPDATE><CONTROL>TXTENTRYRSTS</CONTROL><VALUE>__RST_SENT__</VALUE></CMD>"
+    + "&11:<CMD><UPDATE><CONTROL>TXTENTRYCOMMENTS</CONTROL><VALUE>" + commentStr + "</VALUE></CMD>"
+    + "&12:<CMD><ACTION><VALUE>ENTER</VALUE></CMD>"
+'''
 
 
 @app.get("/aclog/changefreq")
@@ -221,6 +303,7 @@ async def aclog_changemode(request: Request):
 @app.on_event('shutdown')
 def shutdown_event():
     print('potaplus_proxy shutdown handler')
+    global omnirig
     omnirig = None
 
 def ping(host: str, port: int, type: int):
@@ -292,10 +375,12 @@ if __name__ == '__main__':
 
     parser.add_argument('-r', '--rit', default=0, type=int, help='If non-zero, apply an offset in HZ when QSYing to a CW spot.')
     parser.add_argument('-g', '--g90', action='store_true', help='If given, QSY differently for a Xiegu G90.')
+    parser.add_argument('-x', '--xit', action='store_true', help='If given, turn on XIT for CW. Turn off XIT for other modes.')
 
     args = parser.parse_args()
 
     config['cw_rit'] = args.rit
+    config["cw_xit"] = args.xit
     config['g90_qsy'] = args.g90
 
     if not os.path.exists(BACKUP_LOG_FN):
