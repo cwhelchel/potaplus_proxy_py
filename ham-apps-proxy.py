@@ -14,6 +14,7 @@
 import os.path
 import datetime
 import argparse
+import time
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse
@@ -99,12 +100,17 @@ print(f"PM_RITOFF: {omnirig.Rig1.IsParamWriteable(0x0004_0000)}")
 print(f"PM_XITON: {omnirig.Rig1.IsParamWriteable(0x0008_0000)}")
 print(f"PM_XITOFF: {omnirig.Rig1.IsParamWriteable(0x0010_0000)}")
 
-VER = "0.0.6"
+VER = "0.0.7"
 LOG4OM_HOST = "localhost"
 LOG4OM_PORT = 2239
 ACLOG_HOST = "localhost"
 ACLOG_PORT = 1100
 BACKUP_LOG_FN = "proxy_log.adi"
+
+print("---------------------------------")
+print(f"POTA Plus Python Proxy v: {VER}")
+print(f"starting...")
+
 
 config = {
     'cw_rit': 0,  # offset in HZ, if nonzero is added to freq
@@ -208,6 +214,12 @@ async def omnirig_qsy(request: Request):
     RigParamX = {
         'PM_XITON': 0x0008_0000, 
         'PM_XITOFF': 0x0010_0000, 
+        'PM_VFOA':  0x0000_0800,
+        'PM_VFOB':  0x0000_1000,
+        'PM_VFOAA': 0x0000_0080,
+        'PM_VFOAB': 0x0000_0100,
+        'PM_VFOBA': 0x0000_0200,
+        'PM_VFOBB': 0x0000_0400,
     }
 
     freq = int(request.query_params["freq"])
@@ -225,15 +237,33 @@ async def omnirig_qsy(request: Request):
             if (config['cw_rit'] != 0):
                 rig.Rit = config['cw_rit']  # this doesn't work on G-90
                 freq += config['cw_rit']
-            elif (config["cw_xit"]):
-                rig.Xit = RigParamX["PM_XITON"]
-        else:
-            rig.Xit = RigParamX["PM_XITOFF"]
 
         if config["g90"]:
             rig.Freq = freq
         else:
-            rig.SetSimplexMode(freq)
+            #rig.SetSimplexMode(freq)
+            # ok this method will clear out our Xit or Rit if used. try this
+            # for other non-G90 rigs
+            rig.FreqA = freq
+
+        # XIT checks
+        if not config["cw_xit"]:
+            return
+        
+        time.sleep(0.25)
+
+        xit = rig.Xit
+        print(f"xit value is: {xit}")
+
+        if mode.startswith("CW"):
+            if xit != RigParamX["PM_XITON"]:
+                print("turning XIT ON")
+                rig.Xit = RigParamX["PM_XITON"]
+        else:
+            if xit == RigParamX["PM_XITON"]:
+                print("turning XIT OFF")
+                rig.Xit = RigParamX["PM_XITOFF"]
+
     except AttributeError as ae:
         print(f"Error Rig name is most likely invalid: {ae}")
         return {"status": "Error: Rig name is most likely invalid:"}
